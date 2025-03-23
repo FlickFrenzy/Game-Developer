@@ -1,0 +1,175 @@
+import pygame
+from pygame.locals import *
+from random import randint
+
+pygame.init()
+
+# Game Variables
+ground_scroll = 0
+scroll_speed = 5
+tube_gap = 250
+tube_freq = 1500
+last_tube = pygame.time.get_ticks() - tube_freq
+
+clock = pygame.time.Clock()
+fps = 60
+flying = False
+game_over = False
+
+# Screen Setup
+pygame.display.set_caption('Flappy Bird')
+width, height = 864, 736
+screen = pygame.display.set_mode((width, height))
+
+# Load Images
+bckgrnd_img = pygame.image.load("fimg/bground.png")
+ground_img = pygame.image.load("fimg/gr.png")
+restart_img = pygame.image.load("fimg/restart.png")
+
+class Bird(pygame.sprite.Sprite):
+    def __init__(self, x_pos, y_pos):
+        pygame.sprite.Sprite.__init__(self)
+        self.bird = [pygame.image.load(f'fimg/b{i}.png') for i in range(1, 4)]
+        self.index = 0
+        self.counter = 0
+        self.image = self.bird[self.index]
+        self.rect = self.image.get_rect()
+        self.rect.center = [x_pos, y_pos]
+        self.velo = 0
+        self.click = False
+
+    def update(self):
+        global flying, game_over
+
+        if flying:
+            # Apply gravity
+            self.velo += 0.5
+            if self.velo > 10:
+                self.velo = 10
+            self.rect.y += int(self.velo)
+
+            # Check if bird hits the ground
+            if self.rect.bottom >= 736:
+                game_over = True
+                flying = False
+
+        if game_over:
+            self.image = pygame.transform.rotate(self.bird[self.index], -90)
+        else:
+            # Bird flapping
+            if pygame.mouse.get_pressed()[0] == 1 and not self.click:
+                self.click = True
+                self.velo = -10
+            if pygame.mouse.get_pressed()[0] == 0:
+                self.click = False
+
+            # Animate bird
+            self.counter += 1
+            flap_speed = 5
+            if self.counter > flap_speed:
+                self.counter = 0
+                self.index += 1
+                if self.index >= len(self.bird):
+                    self.index = 0
+            # Rotate bird image
+            self.image = pygame.transform.rotate(self.bird[self.index], self.velo * -2)
+
+class Tube(pygame.sprite.Sprite):
+    def __init__(self, x, y, pos):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load("fimg/pipe.png")
+        self.rect = self.image.get_rect()
+        if pos == 1:
+            self.image = pygame.transform.flip(self.image, False, True)
+            self.rect.bottomleft = [x, y - tube_gap // 2]
+        else:
+            self.rect.topleft = [x, y + tube_gap // 2]
+
+    def update(self):
+        self.rect.x -= scroll_speed
+        if self.rect.right < 0:
+            self.kill()
+
+class Restart():
+    def __init__(self, x, y, image):
+        self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        
+    def draw(self):
+        action = False
+        pos = pygame.mouse.get_pos()
+        if self.rect.collidepoint(pos):  
+            if pygame.mouse.get_pressed()[0] == 1:  
+               action = True
+        screen.blit(self.image, (self.rect.x, self.rect.y))
+        return action
+
+# Bird Group
+bird_group = pygame.sprite.Group()
+flappy = Bird(100, int(height // 2))
+bird_group.add(flappy)
+
+restart_button = Restart(width // 2, height // 2, restart_img)
+
+# Tube Group
+tube_group = pygame.sprite.Group()
+
+# Main Game Loop
+running = True
+while running:
+    clock.tick(fps)
+
+    # Draw Background
+    screen.blit(bckgrnd_img, (0, 0))
+
+    # Draw and Update Bird
+    bird_group.draw(screen)
+    bird_group.update()
+
+    # Draw and Update Tube
+    tube_group.draw(screen)
+    tube_group.update()
+
+    # Collision Detection
+    if pygame.sprite.groupcollide(bird_group, tube_group, False, False):
+        game_over = True
+
+    # Draw and Scroll Ground
+    screen.blit(ground_img, (ground_scroll, 768))
+
+    if game_over:
+        # Always draw the restart button when the game is over
+        if restart_button.draw():
+            game_over = False
+            flying = False
+            tube_group.empty()
+            flappy.rect.center = [100, int(height // 2)]
+            flappy.velo = 0
+            flappy.index = 0  # Reset bird animation
+            last_tube = pygame.time.get_ticks()  # Reset tube spawn timer
+
+    else:
+        if flying:
+            time = pygame.time.get_ticks()
+            if time - last_tube > tube_freq:
+                tube_height = randint(-100, 100)
+                top_tube = Tube(width, height // 2 + tube_height, 1)
+                bottom_tube = Tube(width, height // 2 + tube_height, -1)
+                tube_group.add(bottom_tube, top_tube)
+                last_tube = time
+
+        # Move ground when game is running
+        ground_scroll -= scroll_speed
+        if abs(ground_scroll) > 35:
+            ground_scroll = 0
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == MOUSEBUTTONDOWN and not flying and not game_over:
+            flying = True
+
+    pygame.display.update()
+
+pygame.quit()
